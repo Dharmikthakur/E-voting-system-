@@ -5,6 +5,16 @@ const Vote = require('../models/Vote');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
 
+// In-memory election status (persisted via env for simplicity)
+let electionOpen = process.env.ELECTION_OPEN !== 'false';
+
+// @route   GET api/voting/status
+// @desc    Get election open/close status
+// @access  Public
+router.get('/status', (req, res) => {
+  res.json({ open: electionOpen });
+});
+
 // @route   GET api/voting/candidates
 // @desc    Get all candidates
 // @access  Public
@@ -18,26 +28,15 @@ router.get('/candidates', async (req, res) => {
   }
 });
 
-// @route   POST api/voting/candidate
-// @desc    Add a candidate (Admin only conceptually, public for testing)
-// @access  Public
-router.post('/candidate', async (req, res) => {
-  const { name, party, manifesto } = req.body;
-  try {
-    const newCandidate = new Candidate({ name, party, manifesto });
-    const candidate = await newCandidate.save();
-    res.json(candidate);
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
-  }
-});
-
 // @route   POST api/voting/vote
 // @desc    Cast a vote
 // @access  Private
 router.post('/vote', auth, async (req, res) => {
   try {
+    if (!electionOpen) {
+      return res.status(400).json({ message: 'Election is currently closed. Voting is not allowed.' });
+    }
+
     const { candidateId } = req.body;
     const userId = req.user.id;
 
@@ -47,7 +46,7 @@ router.post('/vote', auth, async (req, res) => {
     }
 
     if (user.hasVoted) {
-      return res.status(400).json({ message: 'User has already voted' });
+      return res.status(400).json({ message: 'You have already cast your vote' });
     }
 
     const candidate = await Candidate.findById(candidateId);
@@ -66,11 +65,13 @@ router.post('/vote', auth, async (req, res) => {
     candidate.voteCount += 1;
     await candidate.save();
 
-    // Mark user as voted
+    // Mark user as voted with timestamp and candidate ref
     user.hasVoted = true;
+    user.votedAt = new Date();
+    user.votedFor = candidateId;
     await user.save();
 
-    res.json({ message: 'Vote successfully cast' });
+    res.json({ message: 'Vote successfully cast', candidateName: candidate.name });
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server Error');
@@ -78,16 +79,36 @@ router.post('/vote', auth, async (req, res) => {
 });
 
 // @route   GET api/voting/results
-// @desc    Get voting results
+// @desc    Get voting results sorted by votes
 // @access  Public
 router.get('/results', async (req, res) => {
   try {
-    const candidates = await Candidate.find().select('name party voteCount').sort({ voteCount: -1 });
-    res.json(candidates);
+    const candidates = await Candidate.find().sort({ voteCount: -1 });
+    const totalVotes = candidates.reduce((acc, c) => acc + c.voteCount, 0);
+    res.json({ candidates, totalVotes, electionOpen });
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server Error');
   }
 });
+
+// @route   GET api/voting/stats
+// @desc    Get voter turnout stats
+// @access  Public
+router.get('/stats', async (req, res) => {
+  try {
+    const totalRegistered = await User.countDocuments({ role: 'voter' });
+    const totalVoted = await User.countDocuments({ role: 'voter', hasVoted: true });
+    const turnout = totalRegistered > 0 ? Math.round((totalVoted / totalRegistered) * 100) : 0;
+    res.json({ totalRegistered, totalVoted, turnout, electionOpen });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Export a way to toggle election status (used by admin route)
+router.setElectionStatus = (status) => { electionOpen = status; };
+router.getElectionStatus = () => electionOpen;
 
 module.exports = router;

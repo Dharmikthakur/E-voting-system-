@@ -18,6 +18,15 @@ const UserSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  votedAt: {
+    type: Date,
+    default: null,
+  },
+  votedFor: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Candidate',
+    default: null,
+  },
   role: {
     type: String,
     enum: ['voter', 'admin'],

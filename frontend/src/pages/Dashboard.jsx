@@ -1,32 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { toast } from '../components/Toast';
+import Modal from '../components/Modal';
 
-const Dashboard = () => {
+export default function Dashboard() {
   const [candidates, setCandidates] = useState([]);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
+  const [electionStatus, setElectionStatus] = useState(null);
+  const [confirmVote, setConfirmVote] = useState(null); // stores candidate object
   const navigate = useNavigate();
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         const token = localStorage.getItem('token');
-        const userRes = await axios.get('http://localhost:5000/api/auth/me', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setUser(userRes.data);
+        if (!token) return navigate('/login');
 
-        const candRes = await axios.get('http://localhost:5000/api/voting/candidates');
-        setCandidates(candRes.data);
+        const [userRes, candRes, statusRes] = await Promise.all([
+          axios.get('http://localhost:5000/api/auth/me', { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get(`http://localhost:5000/api/voting/candidates?t=${Date.now()}`),
+          axios.get('http://localhost:5000/api/voting/status')
+        ]);
+
+        setUser(userRes.data);
+        setCandidates(Array.isArray(candRes.data) ? candRes.data : (candRes.data?.candidates || []));
+        setElectionStatus(statusRes.data.open);
+        localStorage.setItem('user', JSON.stringify(userRes.data));
       } catch (err) {
-        if (err.response?.status === 401) {
-          localStorage.removeItem('token');
-          navigate('/login');
-        }
-        setError('Failed to fetch data');
+        if (err.response?.status === 401) navigate('/login');
+        toast('Failed to fetch dashboard data', 'error');
       } finally {
         setLoading(false);
       }
@@ -34,54 +38,108 @@ const Dashboard = () => {
     fetchData();
   }, [navigate]);
 
-  const handleVote = async (candidateId) => {
-    if (!window.confirm('Are you sure you want to vote for this candidate? This action cannot be undone.')) return;
-    
+  const handleVote = async () => {
     try {
       const token = localStorage.getItem('token');
-      await axios.post('http://localhost:5000/api/voting/vote', { candidateId }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setSuccessMsg('Vote successfully cast!');
+      await axios.post('http://localhost:5000/api/voting/vote', 
+        { candidateId: confirmVote._id }, 
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      toast(`Vote cast for ${confirmVote.name}! 🗳️`, 'success');
       setUser({ ...user, hasVoted: true });
+      setConfirmVote(null);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to cast vote');
+      toast(err.response?.data?.message || 'Voting failed', 'error');
+      setConfirmVote(null);
     }
   };
 
-  if (loading) return <div style={{ textAlign: 'center', marginTop: '3rem' }}>Loading...</div>;
+  if (loading) return (
+    <div className="loader-wrap">
+      <div className="spinner"></div>
+      <p>Preparing your ballot...</p>
+    </div>
+  );
 
   return (
-    <div className="animate-fade-in">
-      <h2 style={{ marginBottom: '1rem' }}>Welcome, {user?.name}</h2>
-      {error && <div style={{ color: 'var(--danger)', marginBottom: '1rem', padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px' }}>{error}</div>}
-      {successMsg && <div style={{ color: 'var(--success)', marginBottom: '1rem', padding: '1rem', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px' }}>{successMsg}</div>}
-      
+    <div className="animate">
+      <header className="page-header">
+        <h1 className="page-title">Welcome, {(user?.name || '').split(' ')[0]} 👋</h1>
+        <p className="page-sub">Choose your representative carefully</p>
+      </header>
+
+      {electionStatus === false && (
+        <div className="status-banner closed">
+          <span className="pulse-dot"></span>
+          Voting is currently closed. Stay tuned for results.
+        </div>
+      )}
+
       {user?.hasVoted ? (
-        <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center' }}>
-          <h3>You have already voted.</h3>
-          <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>Thank you for participating in the election.</p>
-          <button className="btn-primary" style={{ marginTop: '1.5rem' }} onClick={() => navigate('/results')}>View Results</button>
+        <div className="glass" style={{ padding: '3rem', textAlign: 'center', marginTop: '2rem' }}>
+          <div style={{ fontSize: '4rem', marginBottom: '1.5rem' }}>✅</div>
+          <h2 style={{ fontSize: '1.8rem', marginBottom: '1rem' }}>Thank You for Voting!</h2>
+          <p style={{ color: 'var(--muted)', maxWidth: '500px', margin: '0 auto 2rem' }}>
+            Your vote has been securely recorded. Your participation helps strengthen our democracy.
+          </p>
+          <button className="btn btn-primary" onClick={() => navigate('/results')}>
+            📊 View Live Results
+          </button>
         </div>
       ) : (
         <>
-          <p style={{ color: 'var(--text-muted)' }}>Please select a candidate to cast your vote.</p>
+          {electionStatus && (
+            <div className="status-banner open">
+              <span className="pulse-dot"></span>
+              Live Election: Voting is currently open
+            </div>
+          )}
+          
           <div className="candidate-grid">
-            {candidates.map(candidate => (
-              <div key={candidate._id} className="candidate-card glass-panel">
-                <h3 className="candidate-name">{candidate.name}</h3>
-                <p className="candidate-party">{candidate.party}</p>
-                <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>{candidate.manifesto}</p>
-                <button className="btn-primary" onClick={() => handleVote(candidate._id)}>
-                  Vote for {candidate.name}
-                </button>
-              </div>
-            ))}
+            {candidates.map(c => {
+              const initials = (c.name || '').split(' ').map(n => n?.[0] || '').join('').toUpperCase();
+              return (
+                <div key={c._id} className="candidate-card glass">
+                  <div className="candidate-avatar" style={{ backgroundColor: c.color || 'var(--primary)', color: '#fff' }}>
+                    {initials}
+                  </div>
+                  <div className="candidate-symbol">{c.symbol || '🗳️'}</div>
+                  <h3 className="candidate-name">{c.name}</h3>
+                  <div className="party-badge" style={{ backgroundColor: `${c.color}20`, color: c.color }}>
+                    {c.party}
+                  </div>
+                  <p className="candidate-manifesto">{c.manifesto}</p>
+                  <button 
+                    className="btn btn-primary" 
+                    style={{ width: '100%' }}
+                    onClick={() => setConfirmVote(c)}
+                    disabled={!electionStatus}
+                  >
+                    Vote for {(c.name || '').split(' ')[0]}
+                  </button>
+                </div>
+              );
+            })}
           </div>
+          
+          {candidates.length === 0 && (
+            <div className="empty-state">
+              <span>📭</span>
+              <p>No candidates have been registered for this election yet.</p>
+            </div>
+          )}
         </>
       )}
+
+      <Modal 
+        open={!!confirmVote}
+        title="Confirm Your Vote"
+        subtitle={`Are you absolutely sure you want to vote for ${confirmVote?.name} of the ${confirmVote?.party}? This action cannot be reversed.`}
+        confirmText="Confirm Vote 🗳️"
+        onConfirm={handleVote}
+        onCancel={() => setConfirmVote(null)}
+      />
     </div>
   );
-};
-
-export default Dashboard;
+}

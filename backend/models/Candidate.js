@@ -11,6 +11,15 @@ const CandidateSchema = new mongoose.Schema({
   },
   manifesto: {
     type: String,
+    default: '',
+  },
+  color: {
+    type: String,
+    default: '#3b82f6',
+  },
+  symbol: {
+    type: String,
+    default: '🗳️',
   },
   voteCount: {
     type: Number,
