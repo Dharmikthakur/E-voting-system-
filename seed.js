@@ -4,7 +4,7 @@ import Candidate from './src/models/Candidate.js';
 import User from './src/models/User.js';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
-
+// new project
 const candidates = [
   {
     name: "John Doe",
