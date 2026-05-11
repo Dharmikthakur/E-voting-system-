@@ -1,6 +1,9 @@
+import 'dotenv/config';
 import dbConnect from './src/lib/db.js';
 import Candidate from './src/models/Candidate.js';
+import User from './src/models/User.js';
 import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 
 const candidates = [
   {
@@ -61,13 +64,25 @@ async function seed() {
     console.log('🔄 Connecting to database...');
     await dbConnect();
     
-    // Clear existing candidates
+    // Clear existing candidates and users
     await Candidate.deleteMany({});
-    console.log('🗑️  Cleared existing candidates');
+    await User.deleteMany({});
+    console.log('🗑️  Cleared existing candidates and users');
     
     // Insert new candidates
     await Candidate.insertMany(candidates);
     console.log('✅ Sample candidates inserted successfully');
+
+    // Create default admin user
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash('admin123', salt);
+    await User.create({
+      name: 'System Admin',
+      email: 'admin@example.com',
+      password: hashedPassword,
+      role: 'admin'
+    });
+    console.log('👤 Default admin user created (admin@example.com / admin123)');
     
     mongoose.connection.close();
     process.exit(0);
