@@ -9,7 +9,7 @@ import { getSetting } from '@/lib/settings';
 export async function POST(req) {
   try {
     await dbConnect();
-    const userData = verifyToken(req);
+    const userData = await verifyToken(req);
     if (!userData) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }

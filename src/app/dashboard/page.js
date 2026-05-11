@@ -30,7 +30,7 @@ export default function Dashboard() {
         setElectionStatus(statusRes.data.open);
         localStorage.setItem('user', JSON.stringify(userRes.data));
       } catch (err) {
-        if (err.response?.status === 401) router.push('/login');
+        if (err.response?.status === 401 || err.response?.status === 404) router.push('/login');
         toast('Failed to fetch dashboard data', 'error');
       } finally {
         setLoading(false);

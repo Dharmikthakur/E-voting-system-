@@ -6,7 +6,7 @@ import { verifyToken } from '@/lib/auth';
 export async function GET(req) {
   try {
     await dbConnect();
-    const userData = verifyToken(req);
+    const userData = await verifyToken(req);
     
     if (!userData) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });

@@ -21,7 +21,7 @@ export default function Profile() {
       setLoading(false);
     })
     .catch(err => {
-      if (err.response?.status === 401) {
+      if (err.response?.status === 401 || err.response?.status === 404) {
         localStorage.removeItem('token');
         router.push('/login');
       }
