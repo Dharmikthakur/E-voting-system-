@@ -10,6 +10,8 @@ const candidates = [
     color: "#3b82f6",
     symbol: "🚀"
   },
+
+  // heyy 
   {
     name: "Jane Smith",
     party: "Unity Coalition",
